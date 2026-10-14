@@ -14,7 +14,7 @@ cat > "$PLIST" <<EOF
   <key>Label</key><string>$LABEL</string>
   <key>ProgramArguments</key><array>
     <string>/bin/zsh</string><string>-lc</string>
-    <string>cd '$REPO_ROOT' &amp;&amp; npm run bah:refresh</string>
+    <string>cd '$REPO_ROOT' &amp;&amp; npm run bah:refresh &amp;&amp; npm run bah:index</string>
   </array>
   <key>StartCalendarInterval</key><dict>
     <key>Weekday</key><integer>2</integer>
