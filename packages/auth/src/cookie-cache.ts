@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { dirname } from 'path';
 import type { CachedToken, Logger } from './types.js';
 
@@ -19,8 +19,10 @@ export function loadCachedToken(file: string, logger: Logger): CachedToken | nul
 
 export function saveCachedToken(file: string, data: CachedToken, logger: Logger): void {
   try {
-    mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(file, JSON.stringify(data, null, 2));
+    mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
+    writeFileSync(file, JSON.stringify(data, null, 2), { mode: 0o600 });
+    // writeFileSync preserves an existing file's mode, so enforce it after every write.
+    chmodSync(file, 0o600);
     logger.warn('Cached session cookies for future use');
   } catch (error) {
     logger.warn('Failed to cache session cookies', error);
