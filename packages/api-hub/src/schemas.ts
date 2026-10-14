@@ -47,6 +47,21 @@ export const DataProductGetInputSchema = {
   id: z.string().min(1).describe('Data-product technical name or exact ORD ID.')
 };
 
+export const PackageListInputSchema = {
+  q: z.string().min(1).max(200).optional().describe('Optional case-insensitive text matched against package name, title, descriptions, products, vendor, and ORD ID.'),
+  product: z.string().min(1).max(100).optional().describe('Optional exact product token, for example SAPSuccessFactors or SAPS4HANACloud.'),
+  vendor: z.string().min(1).max(100).optional().describe('Optional case-insensitive vendor filter, for example SAP.'),
+  top: z.number().int().min(1).max(200).default(50).describe('Maximum matching packages to return.'),
+  skip: z.number().int().min(0).default(0).describe('Number of matching packages to skip.')
+};
+
+export const PackageArtifactListInputSchema = {
+  id: z.string().min(1).describe('API Hub package/content package ID, for example SAPAICore.'),
+  artifactType: z.string().min(1).max(100).optional().describe('Optional exact artifact type, for example API, Event, CDSVIEW, or BADI.'),
+  top: z.number().int().min(1).max(200).default(50).describe('Maximum matching artifacts to return.'),
+  skip: z.number().int().min(0).default(0).describe('Number of matching artifacts to skip.')
+};
+
 export const PackageInputSchema = {
   id: z.string().min(1).describe('API Hub package/content package ID, for example C4C.'),
   includeArtifacts: z.boolean().default(true).describe('When true, also return package artifacts grouped by type/subtype.'),

@@ -32,6 +32,7 @@
   "scripts": {
     "build": "tsc",
     "test:data-products": "npm run build && node --test test/data-products.test.mjs",
+    "test:catalog": "npm run build && node --test test/catalog-inventory.test.mjs",
     "clean": "rimraf dist",
     "dev": "tsx watch src/mcp-server.ts",
     "serve": "node dist/mcp-server.js",

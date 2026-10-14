@@ -253,10 +253,24 @@ Streamable HTTP MCP client config:
 - `resources` - summarize API paths, Event channels, CDS fields, or generic artifact sections.
 - `spec` - return full OpenAPI, AsyncAPI, EDMX, CDS JSON, or raw artifact values on explicit request.
 - `package` - fetch package metadata, docs, and artifacts grouped by type/subtype.
+- `list_packages` - inventory/filter the complete public package catalog with stable IDs, products, vendors, versions, and ORD metadata.
+- `list_package_artifacts` - paginate a package's complete artifact inventory with optional exact type filtering.
 - `list_data_products` - inventory/search Hub-listed data products with complete pagination and ORD/output-port metadata.
 - `get_data_product` - fetch a data product by technical name or exact ORD ID.
 - `get_data_product_document` - return the full authenticated data-product JSON document.
 - `get_data_product_csn` - resolve output-port APIs and return their API ORD IDs and CSN JSON definitions.
+
+## Priority Knowledge Refresh
+
+The repository includes an optional local knowledge pipeline for BDC, AI Core, S/4HANA, SuccessFactors, Ariba, and Concur:
+
+```bash
+npm run bah:refresh        # public package/artifact/Data Product metadata
+npm run bah:index          # local SQLite FTS index
+npm run bah:refresh:specs  # protected specs; requires a current interactive session
+```
+
+See [`tools/bah-knowledge/README.md`](../../tools/bah-knowledge/README.md). Generated snapshots and raw SAP specifications are excluded from Git by default.
 
 ## Safety Boundaries
 

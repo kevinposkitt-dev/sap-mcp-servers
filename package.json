@@ -26,6 +26,9 @@
   "scripts": {
     "build": "npm run build -w @marianfoo/sap-mcp-auth && npm run build -w sap-api-hub-mcp -w sap-roadmap-mcp -w sap-note-search-mcp",
     "build:auth": "npm run build -w @marianfoo/sap-mcp-auth",
+    "bah:refresh": "npm run build:auth && npm run build -w sap-api-hub-mcp && node tools/bah-knowledge/refresh.mjs",
+    "bah:refresh:specs": "npm run build:auth && npm run build -w sap-api-hub-mcp && node tools/bah-knowledge/refresh.mjs --include-specs",
+    "bah:index": "python3 tools/bah-knowledge/build-sqlite-index.py knowledge/bah/current",
     "clean": "npm run clean --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "smoke:bin": "node scripts/smoke-mcp-bin.mjs packages/api-hub sap-api-hub-mcp sap-api-hub-mcp && node scripts/smoke-mcp-bin.mjs packages/roadmap sap-roadmap-mcp sap-roadmap-mcp && node scripts/smoke-mcp-bin.mjs packages/notes sap-note-search-mcp sap-note-search-mcp",

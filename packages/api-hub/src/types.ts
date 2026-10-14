@@ -96,6 +96,21 @@ export interface SpecInput {
   version?: string;
 }
 
+export interface PackageListInput {
+  q?: string;
+  product?: string;
+  vendor?: string;
+  top: number;
+  skip: number;
+}
+
+export interface PackageArtifactListInput {
+  id: string;
+  artifactType?: string;
+  top: number;
+  skip: number;
+}
+
 export interface PackageInput {
   id: string;
   includeArtifacts: boolean;

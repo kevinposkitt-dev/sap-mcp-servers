@@ -6,7 +6,9 @@ import type {
   FetchInput,
   GenericValue,
   JsonObject,
+  PackageArtifactListInput,
   PackageInput,
+  PackageListInput,
   RawResponse,
   ResourcesInput,
   SearchInput,
@@ -298,6 +300,76 @@ export class SapApiHubClient {
       cookie
     );
     return pickString(unwrapOData(raw), 'OrdId');
+  }
+
+  async listPackages(input: PackageListInput, cookie: string): Promise<unknown> {
+    const pageSize = 200;
+    const records: AnyRecord[] = [];
+    let offset = 0;
+    let catalogTotal: number | undefined;
+
+    do {
+      const query = new URLSearchParams({
+        '$format': 'json',
+        '$select': 'TechnicalName,DisplayName,ShortText,Description,Version,Category,Vendor,OrgName,Products,SupportedPlatforms,ModifiedAt,PartnerContent,CertifiedBySap,CommunityContent,Restricted,OrdId',
+        '$inlinecount': 'allpages',
+        '$top': String(pageSize),
+        '$skip': String(offset)
+      });
+      const raw = await this.getJson(`/odata/1.0/catalog.svc/ContentPackages?${query.toString()}`, cookie);
+      const page = unwrapODataCollection(raw).filter(isRecord);
+      records.push(...page);
+      catalogTotal ??= extractODataCount(raw);
+      offset += page.length;
+      if (page.length < pageSize) break;
+    } while (catalogTotal === undefined || offset < catalogTotal);
+
+    const queryText = input.q?.toLocaleLowerCase();
+    const product = input.product?.toLocaleLowerCase();
+    const vendor = input.vendor?.toLocaleLowerCase();
+    const filtered = records.filter(record => {
+      if (product && !splitCatalogValues(pickString(record, 'Products')).some(value => value.toLocaleLowerCase() === product)) return false;
+      if (vendor && !pickString(record, 'Vendor')?.toLocaleLowerCase().includes(vendor)) return false;
+      if (!queryText) return true;
+      return [
+        pickString(record, 'TechnicalName'), pickString(record, 'DisplayName'), pickString(record, 'ShortText'),
+        pickString(record, 'Description'), pickString(record, 'Products'), pickString(record, 'Vendor'), pickString(record, 'OrdId')
+      ].filter(Boolean).some(value => value!.toLocaleLowerCase().includes(queryText));
+    });
+    const results = filtered.slice(input.skip, input.skip + input.top).map(record => normalizePackageRecord(record, this.config.apiHubBaseUrl));
+
+    return {
+      catalogTotal: catalogTotal ?? records.length,
+      total: filtered.length,
+      top: input.top,
+      skip: input.skip,
+      hasMore: input.skip + results.length < filtered.length,
+      results
+    };
+  }
+
+  async listPackageArtifacts(input: PackageArtifactListInput, cookie: string): Promise<unknown> {
+    const key = odataKey(input.id);
+    const query = new URLSearchParams({
+      '$format': 'json',
+      '$inlinecount': 'allpages',
+      '$top': String(input.top),
+      '$skip': String(input.skip)
+    });
+    if (input.artifactType) query.set('$filter', `Type eq '${odataKey(input.artifactType)}'`);
+    const raw = await this.getJson(`/odata/1.0/catalog.svc/ContentPackages('${key}')/Artifacts?${query.toString()}`, cookie);
+    const records = unwrapODataCollection(raw).filter(isRecord);
+    const total = extractODataCount(raw) ?? records.length;
+    const results = records.map(record => normalizePackageArtifact(record, input.id, this.config.apiHubBaseUrl));
+
+    return {
+      packageId: input.id,
+      total,
+      top: input.top,
+      skip: input.skip,
+      hasMore: input.skip + results.length < total,
+      results
+    };
   }
 
   async fetchPackage(input: PackageInput, cookie: string): Promise<unknown> {
@@ -728,6 +800,48 @@ function requireString(record: AnyRecord, key: string): string {
   return value;
 }
 
+function normalizePackageRecord(entity: AnyRecord, baseUrl: string): AnyRecord {
+  const technicalName = pickString(entity, 'TechnicalName', 'Name') || '';
+  return {
+    technicalName,
+    displayName: pickString(entity, 'DisplayName', 'Title') || technicalName,
+    shortText: pickString(entity, 'ShortText'),
+    description: cleanText(pickString(entity, 'Description')),
+    version: pickString(entity, 'Version'),
+    category: pickString(entity, 'Category'),
+    vendor: pickString(entity, 'Vendor'),
+    organization: pickString(entity, 'OrgName'),
+    products: splitCatalogValues(pickString(entity, 'Products')),
+    supportedPlatforms: splitCatalogValues(pickString(entity, 'SupportedPlatforms')),
+    modifiedAt: parseMaybeDate(pickString(entity, 'ModifiedAt')),
+    partnerContent: pickValue(entity, 'PartnerContent'),
+    certifiedBySap: pickValue(entity, 'CertifiedBySap'),
+    communityContent: pickValue(entity, 'CommunityContent'),
+    restricted: pickValue(entity, 'Restricted'),
+    ordId: pickString(entity, 'OrdId'),
+    url: `${baseUrl}/package/${encodeURIComponent(technicalName)}`
+  };
+}
+
+function normalizePackageArtifact(entity: AnyRecord, packageId: string, baseUrl: string): AnyRecord {
+  const id = pickString(entity, 'Name', 'TechnicalName', 'Id', 'ID') || '';
+  const artifactType = pickString(entity, 'Type', 'ArtifactType');
+  const categoryKey = pickString(entity, 'ContentType', 'ContainerName');
+  return {
+    id,
+    title: pickString(entity, 'DisplayName', 'Title', 'Name') || id,
+    packageId,
+    artifactType,
+    subType: pickString(entity, 'SubType'),
+    version: pickString(entity, 'Version', 'Release'),
+    description: cleanText(pickString(entity, 'Description')),
+    state: pickString(entity, 'State', 'Status', 'APIState'),
+    contentType: pickString(entity, 'ContentType'),
+    modifiedAt: parseMaybeDate(pickString(entity, 'ModifiedAt')),
+    url: canonicalUrl(baseUrl, inferKindFromSearch(categoryKey, artifactType), id)
+  };
+}
+
 function normalizeDataProduct(entity: AnyRecord, baseUrl: string): AnyRecord {
   const technicalName = pickString(entity, 'TechnicalName') || '';
   return {
@@ -1043,20 +1157,7 @@ function extractGenericSections(json: unknown): AnyRecord[] {
 }
 
 function groupPackageArtifacts(artifacts: AnyRecord[], baseUrl: string): AnyRecord {
-  const normalized = artifacts.map(artifact => {
-    const id = pickString(artifact, 'Name', 'TechnicalName', 'Id', 'ID') || '';
-    const artifactType = pickString(artifact, 'Type', 'ArtifactType');
-    const categoryKey = pickString(artifact, 'ContentType', 'ContainerName');
-    return {
-      id,
-      title: pickString(artifact, 'DisplayName', 'Title', 'Name') || id,
-      artifactType,
-      subType: pickString(artifact, 'SubType'),
-      state: pickString(artifact, 'State', 'Status', 'APIState'),
-      version: pickString(artifact, 'Version', 'Release'),
-      url: canonicalUrl(baseUrl, inferKindFromSearch(categoryKey, artifactType), id)
-    };
-  });
+  const normalized = artifacts.map(artifact => normalizePackageArtifact(artifact, '', baseUrl));
 
   return {
     items: normalized,

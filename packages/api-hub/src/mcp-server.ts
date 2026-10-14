@@ -17,12 +17,14 @@ import {
   DataProductGetInputSchema,
   DataProductListInputSchema,
   FetchInputSchema,
+  PackageArtifactListInputSchema,
   PackageInputSchema,
+  PackageListInputSchema,
   ResourcesInputSchema,
   SearchInputSchema,
   SpecInputSchema
 } from './schemas.js';
-import type { DataProductGetInput, DataProductListInput, FetchInput, PackageInput, ResourcesInput, SearchInput, ServerConfig, SpecInput } from './types.js';
+import type { DataProductGetInput, DataProductListInput, FetchInput, PackageArtifactListInput, PackageInput, PackageListInput, ResourcesInput, SearchInput, ServerConfig, SpecInput } from './types.js';
 import { PACKAGE_VERSION } from './version.js';
 
 class SapApiHubMcpServer {
@@ -414,6 +416,56 @@ class SapApiHubMcpServer {
           };
         } catch (error) {
           return this.errorResult('API Hub data-product CSN failed', error);
+        }
+      }
+    );
+
+    this.mcpServer.registerTool(
+      'list_packages',
+      {
+        title: 'List SAP API Hub Packages',
+        description: 'List and filter the complete Business Accelerator Hub package catalog with stable package IDs, products, vendors, versions, ORD IDs, and lifecycle metadata.',
+        inputSchema: PackageListInputSchema
+      },
+      async ({ q, product, vendor, top, skip }) => {
+        try {
+          const input: PackageListInput = { q, product, vendor, top, skip };
+          const response = await this.apiHubClient.listPackages(input, '');
+          const record = asRecord(response);
+          const results = Array.isArray(record.results) ? record.results.map(asRecord) : [];
+          const text = [
+            `Found ${record.total ?? results.length} matching package(s) from ${record.catalogTotal ?? 'the'} Hub listing(s).`,
+            '',
+            ...results.slice(0, 25).map(item => `- ${stringValue(item.displayName) || stringValue(item.technicalName)} (${stringValue(item.technicalName)})${stringValue(item.version) ? ` v${stringValue(item.version)}` : ''}`)
+          ].join('\n');
+          return { content: [{ type: 'text' as const, text }], structuredContent: toStructuredContent(response) };
+        } catch (error) {
+          return this.errorResult('API Hub package listing failed', error);
+        }
+      }
+    );
+
+    this.mcpServer.registerTool(
+      'list_package_artifacts',
+      {
+        title: 'List SAP API Hub Package Artifacts',
+        description: 'List a package artifact inventory with complete caller-controlled pagination and optional exact artifact-type filtering.',
+        inputSchema: PackageArtifactListInputSchema
+      },
+      async ({ id, artifactType, top, skip }) => {
+        try {
+          const input: PackageArtifactListInput = { id, artifactType, top, skip };
+          const response = await this.apiHubClient.listPackageArtifacts(input, '');
+          const record = asRecord(response);
+          const results = Array.isArray(record.results) ? record.results.map(asRecord) : [];
+          const text = [
+            `Found ${record.total ?? results.length} artifact(s) in package ${id}.`,
+            '',
+            ...results.slice(0, 25).map(item => `- ${stringValue(item.title) || stringValue(item.id)} (${stringValue(item.id)})${stringValue(item.artifactType) ? ` [${stringValue(item.artifactType)}]` : ''}`)
+          ].join('\n');
+          return { content: [{ type: 'text' as const, text }], structuredContent: toStructuredContent(response) };
+        } catch (error) {
+          return this.errorResult('API Hub package-artifact listing failed', error);
         }
       }
     );

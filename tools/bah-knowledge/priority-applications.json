@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "1.0.0",
+  "applications": [
+    {
+      "id": "sap-ai-core",
+      "title": "SAP AI Core",
+      "priority": 0,
+      "packages": ["SAPAICore"],
+      "artifactTypes": ["API"],
+      "skillPatterns": ["sap-ai-core-*", "rpt-*", "tabpfn-*", "universal-prediction-*"]
+    },
+    {
+      "id": "sap-bdc",
+      "title": "SAP Business Data Cloud",
+      "priority": 0,
+      "packages": ["sapdatasphere", "sap-bdc-dus-DataProducts", "sap-bdc-dus-DataProductsAPI"],
+      "artifactTypes": ["API", "DataProduct"],
+      "dataProductProducts": ["SAPS4HANACloud", "SAPS4HANACloudPrivateEdition", "SAPSuccessFactors", "SAPCustomerDataPlatform"],
+      "skillPatterns": ["datasphere-*", "universal-prediction-*", "csn-*"]
+    },
+    {
+      "id": "sap-s4hana",
+      "title": "SAP S/4HANA",
+      "priority": 0,
+      "packages": [
+        "SAPS4HANACloud",
+        "S4HANAOPAPI",
+        "SAPS4HANABusinessEvents",
+        "SAPS4HANACloudBusinessEvents"
+      ],
+      "artifactTypes": ["API", "Event", "CDSVIEW", "BADI"],
+      "dataProductProducts": ["SAPS4HANACloud", "SAPS4HANACloudPrivateEdition"],
+      "skillPatterns": ["cap-*", "sac-*", "universal-prediction-*", "poc-pattern-agentic-planning-sap"]
+    },
+    {
+      "id": "sap-successfactors",
+      "title": "SAP SuccessFactors",
+      "priority": 0,
+      "packages": [
+        "SuccessFactorsEmployeeCentral",
+        "SuccessFactorsFoundationPlatform",
+        "SuccessFactorsRecruiting",
+        "SuccessFactorsOnboarding",
+        "SuccessFactorsPerformanceAndGoals",
+        "SuccessFactorsTimeOff",
+        "SuccessFactorsTimeTracking",
+        "sap-sf-workforce-Events",
+        "sap-sf-SuccessFactorsOnboardingEvent"
+      ],
+      "artifactTypes": ["API", "Event", "DataProduct"],
+      "dataProductProducts": ["SAPSuccessFactors"],
+      "skillPatterns": ["successfactors-*"]
+    },
+    {
+      "id": "sap-ariba",
+      "title": "SAP Ariba",
+      "priority": 0,
+      "packages": [
+        "SAPAribaOpenAPIs",
+        "OpenApiPackage",
+        "SAPAribaCategoryManagement",
+        "SAPAribaCloudIntegrationGatewayAPI",
+        "sap-intake-management",
+        "CentralInvoiceManagement",
+        "ProcurementPlanning",
+        "SAPAribaWebServices",
+        "sap-sim-SAPAribaSupplierLifecycleandPerformance",
+        "ProcurementPlanningCloudBusinessEvents"
+      ],
+      "artifactTypes": ["API", "Event"],
+      "skillPatterns": ["ariba-*"]
+    },
+    {
+      "id": "sap-concur",
+      "title": "SAP Concur",
+      "priority": 0,
+      "packages": ["ConcurExpense", "ConcurInvoice", "ConcurRequest", "ConcurTravel", "ConcurShared"],
+      "artifactTypes": ["API"],
+      "skillPatterns": ["concur-*"]
+    }
+  ]
+}
