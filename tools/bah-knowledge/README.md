@@ -7,6 +7,7 @@ This pipeline inventories priority SAP Business Accelerator Hub packages, builds
 ```bash
 npm run bah:refresh
 npm run bah:index
+npm run bah:validate
 ```
 
 Public weekly metadata refresh:
@@ -39,6 +40,20 @@ The script never logs or copies the cache. It reads only the cached cookie heade
 - `raw/*` — protected specs only when `--include-specs` is used with a valid session
 
 The previous snapshot is retained under `knowledge/bah/previous/` for one refresh cycle.
+
+`tools/bah-knowledge/curated-knowledge.json` defines reviewed Skill-to-Artifact evidence and six additive S/4HANA domain packs. Generated evidence records include artifact ID, package ID, version/state, source URL, retrieval date, and source hash. The full S/4 inventory remains available; domain packs are retrieval scopes, not inventory filters.
+
+## Freshness, drift, and alerts
+
+- Public metadata is stale after 14 days.
+- Protected specifications are stale after 45 days.
+- Run a targeted live contract check before implementation or release.
+- Protected refresh remains monthly and manual; reviewed skills require human review before updates.
+- Drift is classified as `BREAKING`, `BEHAVIORAL`, `ADDITIVE`, `DOCUMENTATION_ONLY`, `LIFECYCLE`, or `UNKNOWN`.
+- `manifest.json` alerts on manifest errors, missing priority packages, removed artifacts, version/lifecycle changes, and protected-spec age over 45 days.
+- A non-zero scheduled-refresh process exit is the scheduled refresh failure signal; launchd writes stdout/stderr under `~/Library/Logs/sap-bah-knowledge/`.
+
+Run `npm run bah:validate` after an authenticated refresh. It validates operation/channel/CSN chunks, provenance, curated evidence, domain packs, graph edges, and credential-pattern absence without displaying raw specifications.
 
 ## Routine
 

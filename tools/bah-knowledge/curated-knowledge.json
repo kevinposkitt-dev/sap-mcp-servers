@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "1.0.0",
+  "freshnessPolicy": {
+    "publicMetadataStaleAfterDays": 14,
+    "protectedSpecsStaleAfterDays": 45,
+    "liveContractCheckRequiredBefore": ["implementation", "release"],
+    "protectedRefreshCadence": "monthly-manual",
+    "skillUpdatePolicy": "human-review-required"
+  },
+  "skillEvidence": [
+    {"skill":"sap-ai-core-provisioning","applicationId":"sap-ai-core","artifactIds":["AI_CORE_API"]},
+    {"skill":"sap-ai-core-monitoring-troubleshooting-support","applicationId":"sap-ai-core","artifactIds":["AI_CORE_API","INFERENCE_OBSERVABILITY_API","GENAI_METRICMANAGEMENT_API"]},
+    {"skill":"sap-ai-core-resource-group-isolation","applicationId":"sap-ai-core","artifactIds":["AI_CORE_API"]},
+    {"skill":"rpt-1-6-payment-prediction-api","applicationId":"sap-ai-core","artifactIds":["TABULAR_AI_ORCHESTRATION_API"]},
+    {"skill":"rpt-tabpfn-api-formats","applicationId":"sap-ai-core","artifactIds":["TABULAR_AI_ORCHESTRATION_API"]},
+    {"skill":"tabpfn-rpt-cascade-pattern","applicationId":"sap-ai-core","artifactIds":["TABULAR_AI_ORCHESTRATION_API"]},
+    {"skill":"universal-prediction-platform-architecture","applicationId":"sap-ai-core","artifactIds":["AI_CORE_API","TABULAR_AI_ORCHESTRATION_API","ORCHESTRATION_API_v2"]},
+    {"skill":"universal-prediction-platform-roadmap","applicationId":"sap-ai-core","artifactIds":["AI_CORE_API","TABULAR_AI_ORCHESTRATION_API"]},
+    {"skill":"upp-discovery-to-production-evidence","applicationId":"sap-ai-core","artifactIds":["AI_CORE_API","TABULAR_AI_ORCHESTRATION_API"]},
+    {"skill":"direct-mcp-prediction-server","applicationId":"sap-ai-core","artifactIds":["TABULAR_AI_ORCHESTRATION_API"]},
+    {"skill":"evaluate-hana-ai-for-mcp","applicationId":"sap-ai-core","artifactIds":["AI_CORE_API"]},
+    {"skill":"universal-prediction-platform-architecture","applicationId":"sap-bdc","dataProductOrdIds":["sap.s4com:dataProduct:SupplierInvoice:v1","sap.s4com:dataProduct:EntryViewJournalEntry:v1","sap.s4com:dataProduct:Supplier:v1","sap.s4com:dataProduct:PaymentTerms:v1","sap.s4com:dataProduct:CompanyCode:v1"]},
+    {"skill":"universal-prediction-platform-roadmap","applicationId":"sap-bdc","dataProductOrdIds":["sap.s4com:dataProduct:SupplierInvoice:v1","sap.s4com:dataProduct:EntryViewJournalEntry:v1","sap.s4com:dataProduct:Supplier:v1","sap.s4com:dataProduct:PaymentTerms:v1","sap.s4com:dataProduct:CompanyCode:v1"]},
+    {"skill":"upp-discovery-to-production-evidence","applicationId":"sap-bdc","dataProductOrdIds":["sap.s4com:dataProduct:SupplierInvoice:v1","sap.s4com:dataProduct:EntryViewJournalEntry:v1","sap.s4com:dataProduct:Supplier:v1","sap.s4com:dataProduct:PaymentTerms:v1","sap.s4com:dataProduct:CompanyCode:v1"]},
+    {"skill":"successfactors-api-event-integration","applicationId":"sap-successfactors","artifactIds":["EmployeeCentralEC","ECFoundationOrganization","sap-sf-workforce-PersonCDC-v1","sap-sf-workforce-AssignmentCDC-v1"]},
+    {"skill":"ariba-source-to-pay-api-integration","applicationId":"sap-ariba","artifactIds":["supplier_management_v2","sourcing_project_management_v2","invoice_extraction","API_S4HANA_SAPARIBACIG_SOAPIntegration"]},
+    {"skill":"concur-expense-finance-api-integration","applicationId":"sap-concur","artifactIds":["ConcurExpenseReports","ConcurInvoicePaymentRequest","ConcurIdentityV41","ConcurFinancialIntegration"]},
+    {"skill":"bdc-data-product-contract-discovery","applicationId":"sap-bdc","artifactIds":["DatasphereCatalog","DatasphereConsumption","DataSharingCockpit"],"dataProductOrdIds":["sap.s4com:dataProduct:SupplierInvoice:v1","sap.s4com:dataProduct:EntryViewJournalEntry:v1"]}
+  ],
+  "domainPacks": [
+    {"id":"s4-finance-journal-entry","title":"Finance and Journal Entry","applicationId":"sap-s4hana","artifactIds":["API_JOURNALENTRYITEMBASIC_SRV","JOURNALENTRYCREATEREQUESTCONFI","JOURNALENTRYBULKCREATIONREQUES"],"dataProductOrdIds":["sap.s4com:dataProduct:EntryViewJournalEntry:v1","sap.s4com:dataProduct:CompanyCode:v1"]},
+    {"id":"s4-accounts-payable-supplier-invoice","title":"Accounts Payable and Supplier Invoice","applicationId":"sap-s4hana","artifactIds":["API_SUPPLIERINVOICE_PROCESS_SRV","SUPPLIERINVOICES4REQUEST_IN","CE_SUPPLIERINVOICEEVENTS"],"dataProductOrdIds":["sap.s4com:dataProduct:SupplierInvoice:v1","sap.s4com:dataProduct:Supplier:v1","sap.s4com:dataProduct:PaymentTerms:v1"]},
+    {"id":"s4-procurement-purchase-order","title":"Procurement and Purchase Order","applicationId":"sap-s4hana","artifactIds":["CE_PURCHASEORDER_0001","MMPUR_PURCHASEORDERREQUEST_IN","CO_EDI_ORDER_REQUEST_OUT"]},
+    {"id":"s4-business-partner","title":"Business Partner","applicationId":"sap-s4hana","artifactIds":["API_BUSINESS_PARTNER","CO_MDG_BP_RPLCTRQ","CE_BUSINESSPARTNEREVENTS"]},
+    {"id":"s4-sales-order-billing","title":"Sales Order and Billing","applicationId":"sap-s4hana","artifactIds":["API_SALES_ORDER_SRV","API_BILLING_DOCUMENT_SRV","BILLINGDOCUMENTREQUEST_IN"]},
+    {"id":"s4-product-material","title":"Product and Material","applicationId":"sap-s4hana","artifactIds":["API_PRODUCT_SRV","API_CLFN_PRODUCT_SRV","CO_MDM_PRD_BULK_REPL_REQ_OUT"]}
+  ]
+}

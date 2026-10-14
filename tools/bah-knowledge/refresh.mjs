@@ -12,6 +12,7 @@ const outputRoot = resolve(process.env.BAH_KNOWLEDGE_OUTPUT || join(repoRoot, 'k
 const includeSpecs = process.argv.includes('--include-specs');
 const authCache = process.env.API_HUB_TOKEN_CACHE_FILE || join(process.env.HOME || '', '.config/sap-api-hub-mcp/api-hub-token-cache.json');
 const config = JSON.parse(readFileSync(configPath, 'utf8'));
+const curatedConfig = JSON.parse(readFileSync(join(here, 'curated-knowledge.json'), 'utf8'));
 const client = new SapApiHubClient({ apiHubBaseUrl: 'https://api.sap.com' });
 const generatedAt = new Date().toISOString();
 
@@ -101,17 +102,33 @@ function operationChunks(spec, artifact, application, packageInfo) {
   return chunks;
 }
 
+function changedFields(before, after) {
+  const ignored = new Set(['hash', 'spec']);
+  return [...new Set([...Object.keys(before || {}), ...Object.keys(after || {})])]
+    .filter(field => !ignored.has(field) && JSON.stringify(before?.[field]) !== JSON.stringify(after?.[field]));
+}
+
+function classifyDrift(kind, before, after) {
+  if (kind === 'removed') return 'BREAKING';
+  if (kind === 'added') return 'ADDITIVE';
+  const fields = changedFields(before, after);
+  if (fields.some(field => ['state', 'version', 'releaseStatus', 'deprecated'].includes(field))) return 'LIFECYCLE';
+  if (fields.length && fields.every(field => ['title', 'description', 'docs', 'modifiedAt', 'url'].includes(field))) return 'DOCUMENTATION_ONLY';
+  if (fields.some(field => ['protocol', 'apiType', 'subType', 'artifactType'].includes(field))) return 'BEHAVIORAL';
+  return 'UNKNOWN';
+}
+
 function diffManifests(previous, current) {
   const key = item => `${item.applicationId}:${item.packageId}:${item.artifactType}:${item.id}`;
   const before = new Map((previous?.artifacts || []).map(item => [key(item), item]));
   const after = new Map(current.artifacts.map(item => [key(item), item]));
   const added = [], removed = [], changed = [];
   for (const [id, item] of after) {
-    if (!before.has(id)) added.push(item);
-    else if (before.get(id).hash !== item.hash) changed.push({ before: before.get(id), after: item });
+    if (!before.has(id)) added.push({ ...item, driftClass: classifyDrift('added', undefined, item) });
+    else if (before.get(id).hash !== item.hash) changed.push({ before: before.get(id), after: item, changedFields: changedFields(before.get(id), item), driftClass: classifyDrift('changed', before.get(id), item) });
   }
-  for (const [id, item] of before) if (!after.has(id)) removed.push(item);
-  return { generatedAt, previousGeneratedAt: previous?.generatedAt, added, removed, changed };
+  for (const [id, item] of before) if (!after.has(id)) removed.push({ ...item, driftClass: classifyDrift('removed', item, undefined) });
+  return { generatedAt, previousGeneratedAt: previous?.generatedAt, classifications: ['BREAKING', 'BEHAVIORAL', 'ADDITIVE', 'DOCUMENTATION_ONLY', 'LIFECYCLE', 'UNKNOWN'], added, removed, changed };
 }
 
 const current = join(outputRoot, 'current');
@@ -122,7 +139,19 @@ if (existsSync(current)) renameSync(current, previous);
 mkdirSync(current, { recursive: true });
 
 const cookie = loadCookie();
-const manifest = { schemaVersion: '1.0.0', generatedAt, source: 'SAP Business Accelerator Hub', includeSpecs, authenticatedSpecs: Boolean(cookie), applications: [], packages: [], artifacts: [], dataProducts: [], errors: [] };
+const manifest = {
+  schemaVersion: '1.1.0', generatedAt, retrievedAt: generatedAt,
+  source: 'SAP Business Accelerator Hub', includeSpecs, authenticatedSpecs: Boolean(cookie),
+  freshnessPolicy: curatedConfig.freshnessPolicy,
+  freshness: {
+    publicMetadataRetrievedAt: generatedAt,
+    publicMetadataStaleAt: new Date(Date.parse(generatedAt) + curatedConfig.freshnessPolicy.publicMetadataStaleAfterDays * 86400000).toISOString(),
+    protectedSpecsRetrievedAt: cookie ? generatedAt : previousManifest?.freshness?.protectedSpecsRetrievedAt,
+    protectedSpecsStaleAt: cookie ? new Date(Date.parse(generatedAt) + curatedConfig.freshnessPolicy.protectedSpecsStaleAfterDays * 86400000).toISOString() : previousManifest?.freshness?.protectedSpecsStaleAt,
+    liveContractCheckRequiredBefore: curatedConfig.freshnessPolicy.liveContractCheckRequiredBefore
+  },
+  applications: [], packages: [], artifacts: [], dataProducts: [], skillEvidence: [], domainPacks: [], errors: [], alerts: []
+};
 const chunks = [];
 const graph = { '@context': { bah: 'https://api.sap.com/', type: '@type', id: '@id' }, '@graph': [] };
 
@@ -166,7 +195,7 @@ for (const application of config.applications) {
         const artifactRecord = { ...artifact, applicationId: application.id, hash: sha256(artifact) };
         manifest.artifacts.push(artifactRecord);
         graph['@graph'].push({ id: `artifact:${artifact.artifactType}:${artifact.id}`, type: artifact.artifactType || 'Artifact', title: artifact.title, package: `package:${packageId}`, version: artifact.version, state: artifact.state, sourceUrl: artifact.url, hash: artifactRecord.hash });
-        chunks.push({ id: `artifact:${artifact.artifactType}:${artifact.id}`, kind: 'artifact', applicationId: application.id, applicationTitle: application.title, packageId, packageTitle: packageInfo.displayName, ...artifact, sourceHash: artifactRecord.hash });
+        chunks.push({ id: `artifact:${artifact.artifactType}:${artifact.id}`, kind: 'artifact', applicationId: application.id, applicationTitle: application.title, packageId, packageTitle: packageInfo.displayName, ...artifact, sourceHash: artifactRecord.hash, retrievedAt: generatedAt });
         const request = specRequest(artifact);
         if (!cookie || !request) continue;
         try {
@@ -178,7 +207,7 @@ for (const application of config.applications) {
           const parsed = ext === 'json' ? JSON.parse(raw.text) : undefined;
           const specHash = sha256(raw.text);
           artifactRecord.spec = { path: rawPath.slice(current.length + 1), format: request.format, contentType: raw.contentType, size: raw.text.length, hash: specHash, sourceUrl: raw.url };
-          chunks.push(...operationChunks(parsed, artifact, application, packageInfo).map(chunk => ({ ...chunk, sourceHash: specHash })));
+          chunks.push(...operationChunks(parsed, artifact, application, packageInfo).map(chunk => ({ ...chunk, sourceHash: specHash, retrievedAt: generatedAt, state: artifact.state })));
         } catch (error) {
           manifest.errors.push({ scope: 'spec', applicationId: application.id, packageId, artifactId: artifact.id, artifactType: artifact.artifactType, error: error instanceof Error ? error.message : String(error) });
         }
@@ -200,8 +229,62 @@ for (const application of config.applications) {
     const record = { ...product, applicationId: application.id, hash: sha256(product) };
     manifest.dataProducts.push(record);
     graph['@graph'].push({ id: `dataProduct:${product.ordId || product.technicalName}`, type: 'DataProduct', title: product.displayName, application: `application:${application.id}`, ordId: product.ordId, sourceUrl: product.url, hash: record.hash });
-    chunks.push({ id: `dataProduct:${application.id}:${product.ordId || product.technicalName}`, kind: 'data-product', applicationId: application.id, applicationTitle: application.title, ...product, sourceHash: record.hash });
+    chunks.push({ id: `dataProduct:${application.id}:${product.ordId || product.technicalName}`, kind: 'data-product', applicationId: application.id, applicationTitle: application.title, ...product, sourceHash: record.hash, retrievedAt: generatedAt });
   }
+}
+
+const artifactByKey = new Map(manifest.artifacts.map(artifact => [`${artifact.applicationId}:${artifact.id}`, artifact]));
+const dataProductByOrdId = new Map(manifest.dataProducts.map(product => [product.ordId, product]));
+function evidenceRecord(ownerType, ownerId, applicationId, artifact) {
+  return {
+    ownerType, ownerId, applicationId, artifactId: artifact.id, artifactType: artifact.artifactType,
+    packageId: artifact.packageId, version: artifact.version, state: artifact.state,
+    sourceUrl: artifact.spec?.sourceUrl || artifact.url, retrievalDate: generatedAt, sourceHash: artifact.spec?.hash || artifact.hash
+  };
+}
+for (const mapping of curatedConfig.skillEvidence) {
+  const evidence = [];
+  for (const artifactId of mapping.artifactIds || []) {
+    const artifact = artifactByKey.get(`${mapping.applicationId}:${artifactId}`);
+    if (!artifact) {
+      manifest.errors.push({ scope: 'curated-evidence', ownerType: 'skill', ownerId: mapping.skill, applicationId: mapping.applicationId, artifactId, error: 'Configured artifact not found in inventory' });
+      continue;
+    }
+    evidence.push(evidenceRecord('skill', mapping.skill, mapping.applicationId, artifact));
+  }
+  for (const ordId of mapping.dataProductOrdIds || []) {
+    const product = dataProductByOrdId.get(ordId);
+    if (!product) {
+      manifest.errors.push({ scope: 'curated-evidence', ownerType: 'skill', ownerId: mapping.skill, applicationId: mapping.applicationId, artifactId: ordId, error: 'Configured data product not found in inventory' });
+      continue;
+    }
+    evidence.push({ ownerType: 'skill', ownerId: mapping.skill, applicationId: mapping.applicationId, artifactId: ordId, artifactType: 'DataProduct', packageId: product.packageId || product.products?.join(','), version: product.version, state: product.state, sourceUrl: product.url, retrievalDate: generatedAt, sourceHash: product.hash });
+  }
+  manifest.skillEvidence.push({ skill: mapping.skill, applicationId: mapping.applicationId, evidence });
+  graph['@graph'].push({ id: `skill:${mapping.skill}`, type: 'Skill' });
+  for (const item of evidence) graph['@graph'].push({ id: `evidence:skill:${mapping.skill}:${item.artifactId}`, type: 'SkillArtifactEvidence', skill: `skill:${mapping.skill}`, artifact: item.artifactType === 'DataProduct' ? `dataProduct:${item.artifactId}` : `artifact:${item.artifactType}:${item.artifactId}`, ...item });
+}
+for (const pack of curatedConfig.domainPacks) {
+  const evidence = [];
+  for (const artifactId of pack.artifactIds || []) {
+    const artifact = artifactByKey.get(`${pack.applicationId}:${artifactId}`);
+    if (!artifact) {
+      manifest.errors.push({ scope: 'curated-evidence', ownerType: 'domain-pack', ownerId: pack.id, applicationId: pack.applicationId, artifactId, error: 'Configured artifact not found in inventory' });
+      continue;
+    }
+    evidence.push(evidenceRecord('domain-pack', pack.id, pack.applicationId, artifact));
+  }
+  for (const ordId of pack.dataProductOrdIds || []) {
+    const product = dataProductByOrdId.get(ordId);
+    if (!product) {
+      manifest.errors.push({ scope: 'curated-evidence', ownerType: 'domain-pack', ownerId: pack.id, applicationId: pack.applicationId, artifactId: ordId, error: 'Configured data product not found in inventory' });
+      continue;
+    }
+    evidence.push({ ownerType: 'domain-pack', ownerId: pack.id, applicationId: pack.applicationId, artifactId: ordId, artifactType: 'DataProduct', packageId: product.packageId || product.products?.join(','), version: product.version, state: product.state, sourceUrl: product.url, retrievalDate: generatedAt, sourceHash: product.hash });
+  }
+  manifest.domainPacks.push({ id: pack.id, title: pack.title, applicationId: pack.applicationId, evidence });
+  chunks.push({ id: `domain-pack:${pack.id}`, kind: 'domain-pack', applicationId: pack.applicationId, title: pack.title, description: `${pack.title} curated S/4HANA retrieval scope`, artifactIds: evidence.map(item => item.artifactId), evidence, retrievedAt: generatedAt, sourceHash: sha256(evidence) });
+  graph['@graph'].push({ id: `domainPack:${pack.id}`, type: 'DomainPack', title: pack.title, application: `application:${pack.applicationId}`, evidence: evidence.map(item => item.artifactType === 'DataProduct' ? `dataProduct:${item.artifactId}` : `artifact:${item.artifactType}:${item.artifactId}`) });
 }
 
 manifest.summary = {
@@ -212,10 +295,18 @@ manifest.summary = {
   chunkCount: chunks.length,
   errorCount: manifest.errors.length
 };
+const changes = diffManifests(previousManifest, manifest);
+const requiredPackages = new Set(config.applications.flatMap(application => application.packages));
+const presentPackages = new Set(manifest.packages.map(item => item.technicalName));
+for (const packageId of requiredPackages) if (!presentPackages.has(packageId)) manifest.alerts.push({ type: 'MISSING_PRIORITY_PACKAGE', severity: 'ERROR', packageId });
+if (manifest.errors.length) manifest.alerts.push({ type: 'MANIFEST_ERRORS', severity: 'ERROR', count: manifest.errors.length });
+for (const item of changes.removed) manifest.alerts.push({ type: 'ARTIFACT_REMOVED', severity: 'ERROR', applicationId: item.applicationId, packageId: item.packageId, artifactId: item.id, driftClass: item.driftClass });
+for (const item of changes.changed.filter(item => item.driftClass === 'LIFECYCLE')) manifest.alerts.push({ type: 'VERSION_OR_LIFECYCLE_CHANGE', severity: 'WARNING', applicationId: item.after.applicationId, packageId: item.after.packageId, artifactId: item.after.id, driftClass: item.driftClass });
+if (manifest.freshness.protectedSpecsStaleAt && Date.parse(manifest.freshness.protectedSpecsStaleAt) < Date.parse(generatedAt)) manifest.alerts.push({ type: 'PROTECTED_SPEC_STALE', severity: 'WARNING', staleAfterDays: curatedConfig.freshnessPolicy.protectedSpecsStaleAfterDays });
+manifest.summary.alertCount = manifest.alerts.length;
 writeJson(join(current, 'manifest.json'), manifest);
 writeJson(join(current, 'chunks.json'), chunks);
 writeJson(join(current, 'knowledge-graph.jsonld'), graph);
-const changes = diffManifests(previousManifest, manifest);
 writeJson(join(current, 'changes.json'), changes);
 const report = [
   '# SAP Business Accelerator Hub Refresh Report', '',
@@ -227,6 +318,12 @@ const report = [
   `- Search chunks: ${manifest.summary.chunkCount}`,
   `- Protected specifications retrieved: ${includeSpecs && cookie ? 'yes' : 'no'}`,
   `- Errors: ${manifest.summary.errorCount}`,
+  `- Alerts: ${manifest.summary.alertCount}`,
+  `- Skill evidence mappings: ${manifest.skillEvidence.length}`,
+  `- Curated domain packs: ${manifest.domainPacks.length}`,
+  `- Public metadata stale after: ${curatedConfig.freshnessPolicy.publicMetadataStaleAfterDays} days`,
+  `- Protected specs stale after: ${curatedConfig.freshnessPolicy.protectedSpecsStaleAfterDays} days`,
+  `- Live contract check before implementation/release: required`,
   `- Added artifacts: ${changes.added.length}`,
   `- Changed artifacts: ${changes.changed.length}`,
   `- Removed artifacts: ${changes.removed.length}`,
