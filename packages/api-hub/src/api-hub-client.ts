@@ -1,6 +1,8 @@
 import type {
   ApiHubCategory,
   ApiHubSearchResponse,
+  DataProductGetInput,
+  DataProductListInput,
   FetchInput,
   GenericValue,
   JsonObject,
@@ -84,6 +86,8 @@ export class SapApiHubClient {
         return this.fetchGenericArtifact(input.id, requireArtifactType(input.artifactType), cookie);
       case 'package':
         return this.fetchPackage({ id: input.id, includeArtifacts: true, top: 50 }, cookie);
+      case 'dataproduct':
+        return this.getDataProduct({ id: input.id }, cookie);
       default:
         assertNever(input.kind);
     }
@@ -180,6 +184,120 @@ export class SapApiHubClient {
       default:
         assertNever(input.kind);
     }
+  }
+
+  async listDataProducts(input: DataProductListInput, cookie: string): Promise<unknown> {
+    const pageSize = 200;
+    const records: AnyRecord[] = [];
+    let offset = 0;
+    let catalogTotal: number | undefined;
+
+    do {
+      const query = new URLSearchParams({
+        '$format': 'json',
+        '$select': 'TechnicalName,DisplayName,ShortText,Description,Version,State,DataProductType,DataProductCategory,ResponsibleOrg,InputPorts,OutputPorts,BusinessObjects,OrdId,Products,BusinessSuitePackages,Scope,ModifiedAt',
+        '$inlinecount': 'allpages',
+        '$top': String(pageSize),
+        '$skip': String(offset)
+      });
+      const raw = await this.getJson(`/odata/1.0/catalog.svc/DataProductContent.DataProducts?${query.toString()}`, cookie);
+      const page = unwrapODataCollection(raw).filter(isRecord);
+      records.push(...page);
+      catalogTotal ??= extractODataCount(raw);
+      offset += page.length;
+      if (page.length < pageSize) break;
+    } while (catalogTotal === undefined || offset < catalogTotal);
+
+    const queryText = input.q?.toLocaleLowerCase();
+    const product = input.product?.toLocaleLowerCase();
+    const state = input.state?.toLocaleLowerCase();
+    const filtered = records.filter(record => {
+      if (product && !splitCatalogValues(pickString(record, 'Products')).some(value => value.toLocaleLowerCase() === product)) return false;
+      if (state && pickString(record, 'State')?.toLocaleLowerCase() !== state) return false;
+      if (!queryText) return true;
+      return [
+        pickString(record, 'TechnicalName'), pickString(record, 'DisplayName'), pickString(record, 'ShortText'),
+        pickString(record, 'Description'), pickString(record, 'OrdId'), pickString(record, 'BusinessObjects'),
+        pickString(record, 'Products'), pickString(record, 'ResponsibleOrg')
+      ].some(value => value?.toLocaleLowerCase().includes(queryText));
+    });
+    const results = filtered.slice(input.skip, input.skip + input.top).map(record => normalizeDataProduct(record, this.config.apiHubBaseUrl));
+
+    return {
+      catalogTotal: catalogTotal ?? records.length,
+      total: filtered.length,
+      top: input.top,
+      skip: input.skip,
+      hasMore: input.skip + results.length < filtered.length,
+      results
+    };
+  }
+
+  async getDataProduct(input: DataProductGetInput, cookie: string): Promise<unknown> {
+    const entity = await this.resolveDataProduct(input.id, cookie);
+    return normalizeDataProduct(entity, this.config.apiHubBaseUrl);
+  }
+
+  async getDataProductDocument(input: DataProductGetInput, cookie: string): Promise<RawResponse> {
+    const entity = await this.resolveDataProduct(input.id, cookie);
+    const technicalName = requireString(entity, 'TechnicalName');
+    return this.getRaw(
+      `/odata/1.0/catalog.svc/DataProductContent.DataProducts('${odataKey(technicalName)}')/$value?type=json`,
+      cookie,
+      'application/json'
+    );
+  }
+
+  async getDataProductCsn(input: DataProductGetInput, cookie: string): Promise<unknown> {
+    const entity = await this.resolveDataProduct(input.id, cookie);
+    const dataProduct = normalizeDataProduct(entity, this.config.apiHubBaseUrl);
+    const outputPorts = parsePorts(entity.OutputPorts);
+    const csnDocuments = [];
+
+    for (const port of outputPorts) {
+      const technicalName = pickString(port, 'TechnicalName', 'technicalName', 'Name', 'name');
+      if (!technicalName) continue;
+      const raw = await this.getApiSpecRaw(technicalName, 'json', cookie);
+      csnDocuments.push({
+        technicalName,
+        type: pickString(port, 'Type', 'type'),
+        ordId: await this.fetchApiOrdId(technicalName, cookie),
+        url: raw.url,
+        contentType: raw.contentType,
+        csn: parseJsonSafe(raw.text) ?? raw.text
+      });
+    }
+
+    return { dataProduct, outputPorts, csnDocuments };
+  }
+
+  private async resolveDataProduct(idOrOrdId: string, cookie: string): Promise<AnyRecord> {
+    if (!idOrOrdId.includes(':')) {
+      const raw = await this.getJson(
+        `/odata/1.0/catalog.svc/DataProductContent.DataProducts('${odataKey(idOrOrdId)}')?$select=*&$format=json`,
+        cookie
+      );
+      return unwrapOData(raw) as AnyRecord;
+    }
+
+    const listed = await this.listDataProducts({ q: idOrOrdId, top: 200, skip: 0 }, cookie) as AnyRecord;
+    const results = Array.isArray(listed.results) ? listed.results.filter(isRecord) : [];
+    const match = results.find(record => pickString(record, 'ordId') === idOrOrdId);
+    if (!match) throw new Error(`SAP API Hub data product ORD ID not found: ${idOrOrdId}`);
+    const technicalName = requireString(match, 'technicalName');
+    const raw = await this.getJson(
+      `/odata/1.0/catalog.svc/DataProductContent.DataProducts('${odataKey(technicalName)}')?$select=*&$format=json`,
+      cookie
+    );
+    return unwrapOData(raw) as AnyRecord;
+  }
+
+  private async fetchApiOrdId(id: string, cookie: string): Promise<string | undefined> {
+    const raw = await this.getJson(
+      `/odata/1.0/catalog.svc/APIContent.APIs('${odataKey(id)}')?$select=OrdId&$format=json`,
+      cookie
+    );
+    return pickString(unwrapOData(raw), 'OrdId');
   }
 
   async fetchPackage(input: PackageInput, cookie: string): Promise<unknown> {
@@ -584,6 +702,56 @@ function unwrapODataCollection(value: unknown): unknown[] {
   if (isRecord(unwrapped) && Array.isArray(unwrapped.results)) return unwrapped.results;
   if (isRecord(unwrapped) && Array.isArray(unwrapped.value)) return unwrapped.value;
   return [];
+}
+
+function extractODataCount(value: unknown): number | undefined {
+  const unwrapped = unwrapOData(value);
+  if (!isRecord(unwrapped)) return undefined;
+  const count = unwrapped.__count;
+  const parsed = typeof count === 'number' ? count : Number.parseInt(String(count ?? ''), 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parsePorts(value: unknown): AnyRecord[] {
+  const parsed = typeof value === 'string' ? parseJsonSafe(value) : value;
+  return Array.isArray(parsed) ? parsed.filter(isRecord) : [];
+}
+
+function splitCatalogValues(value: string | undefined): string[] {
+  if (!value) return [];
+  return value.split(',').map(item => item.trim()).filter(Boolean);
+}
+
+function requireString(record: AnyRecord, key: string): string {
+  const value = pickString(record, key);
+  if (!value) throw new Error(`SAP API Hub response is missing ${key}`);
+  return value;
+}
+
+function normalizeDataProduct(entity: AnyRecord, baseUrl: string): AnyRecord {
+  const technicalName = pickString(entity, 'TechnicalName') || '';
+  return {
+    technicalName,
+    displayName: pickString(entity, 'DisplayName') || technicalName,
+    shortText: pickString(entity, 'ShortText'),
+    description: cleanText(pickString(entity, 'Description')),
+    version: pickString(entity, 'Version'),
+    state: pickString(entity, 'State'),
+    dataProductType: pickString(entity, 'DataProductType'),
+    dataProductCategory: pickString(entity, 'DataProductCategory'),
+    responsibleOrg: pickString(entity, 'ResponsibleOrg'),
+    ordId: pickString(entity, 'OrdId'),
+    inputPorts: parsePorts(entity.InputPorts),
+    outputPorts: parsePorts(entity.OutputPorts),
+    businessObjects: splitCatalogValues(pickString(entity, 'BusinessObjects')),
+    products: splitCatalogValues(pickString(entity, 'Products')),
+    businessSuitePackages: splitCatalogValues(pickString(entity, 'BusinessSuitePackages')),
+    scope: pickString(entity, 'Scope'),
+    modifiedAt: parseMaybeDate(pickString(entity, 'ModifiedAt')),
+    url: `${baseUrl}/dataproduct/${encodeURIComponent(technicalName)}/overview`,
+    documentUrl: `${baseUrl}/odata/1.0/catalog.svc/DataProductContent.DataProducts('${odataKey(technicalName)}')/$value?type=json`,
+    metadata: entity
+  };
 }
 
 function normalizeLooseRecord(record: AnyRecord): AnyRecord {

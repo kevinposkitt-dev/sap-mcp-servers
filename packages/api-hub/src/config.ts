@@ -62,7 +62,7 @@ export function loadConfig(): ServerConfig {
 }
 
 function normalizeAuthMethod(value: string | undefined): AuthMethod {
-  if (value === 'password' || value === 'certificate' || value === 'auto') {
+  if (value === 'password' || value === 'certificate' || value === 'interactive' || value === 'auto') {
     return value;
   }
 

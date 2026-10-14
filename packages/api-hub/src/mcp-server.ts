@@ -14,13 +14,15 @@ import { SapApiHubClient } from './api-hub-client.js';
 import { loadConfig } from './config.js';
 import { logger } from './logger.js';
 import {
+  DataProductGetInputSchema,
+  DataProductListInputSchema,
   FetchInputSchema,
   PackageInputSchema,
   ResourcesInputSchema,
   SearchInputSchema,
   SpecInputSchema
 } from './schemas.js';
-import type { FetchInput, PackageInput, ResourcesInput, SearchInput, ServerConfig, SpecInput } from './types.js';
+import type { DataProductGetInput, DataProductListInput, FetchInput, PackageInput, ResourcesInput, SearchInput, ServerConfig, SpecInput } from './types.js';
 import { PACKAGE_VERSION } from './version.js';
 
 class SapApiHubMcpServer {
@@ -330,6 +332,93 @@ class SapApiHubMcpServer {
     );
 
     this.mcpServer.registerTool(
+      'list_data_products',
+      {
+        title: 'List SAP Business Data Products',
+        description: 'List and search released data products from SAP Business Accelerator Hub with pagination, ORD IDs, output ports, products, business objects, and lifecycle metadata.',
+        inputSchema: DataProductListInputSchema
+      },
+      async ({ q, product, state, top, skip }) => {
+        try {
+          const input: DataProductListInput = { q, product, state, top, skip };
+          // Hub data-product catalog metadata is public; do not force SAP login for inventory/search.
+          const response = await this.apiHubClient.listDataProducts(input, '');
+          const record = asRecord(response);
+          const results = Array.isArray(record.results) ? record.results.map(asRecord) : [];
+          const text = [
+            `Found ${record.total ?? results.length} matching data product(s) from ${record.catalogTotal ?? 'the'} Hub listing(s).`,
+            '',
+            ...results.slice(0, 25).map(item => `- ${stringValue(item.displayName) || stringValue(item.technicalName)} (${stringValue(item.technicalName)}) — ${stringValue(item.ordId) || 'no ORD ID'}`)
+          ].join('\n');
+          return { content: [{ type: 'text' as const, text }], structuredContent: toStructuredContent(response) };
+        } catch (error) {
+          return this.errorResult('API Hub data-product listing failed', error);
+        }
+      }
+    );
+
+    this.mcpServer.registerTool(
+      'get_data_product',
+      {
+        title: 'Get SAP Business Data Product',
+        description: 'Get one Business Accelerator Hub data product by technical name or exact data-product ORD ID.',
+        inputSchema: DataProductGetInputSchema
+      },
+      async ({ id }) => {
+        try {
+          const input: DataProductGetInput = { id };
+          // Individual data-product metadata is public; only protected $value/CSN downloads authenticate.
+          const detail = await this.apiHubClient.getDataProduct(input, '');
+          return { content: [{ type: 'text' as const, text: renderDataProductSummary(detail) }], structuredContent: toStructuredContent(detail) };
+        } catch (error) {
+          return this.errorResult('API Hub data-product fetch failed', error);
+        }
+      }
+    );
+
+    this.mcpServer.registerTool(
+      'get_data_product_document',
+      {
+        title: 'Get SAP Business Data Product ORD Document',
+        description: 'Return the full JSON data-product document exposed by the Hub $value endpoint.',
+        inputSchema: DataProductGetInputSchema
+      },
+      async ({ id }) => {
+        try {
+          const document = await this.withAuthRetry(token => this.apiHubClient.getDataProductDocument({ id }, token));
+          return {
+            content: [{ type: 'text' as const, text: document.text }],
+            structuredContent: { id, url: document.url, contentType: document.contentType, size: document.text.length }
+          };
+        } catch (error) {
+          return this.errorResult('API Hub data-product document failed', error);
+        }
+      }
+    );
+
+    this.mcpServer.registerTool(
+      'get_data_product_csn',
+      {
+        title: 'Get SAP Business Data Product CSN',
+        description: 'Resolve a data product output port and return its API ORD ID and complete CSN JSON definition.',
+        inputSchema: DataProductGetInputSchema
+      },
+      async ({ id }) => {
+        try {
+          const result = await this.withAuthRetry(token => this.apiHubClient.getDataProductCsn({ id }, token));
+          const record = asRecord(result);
+          const documents = Array.isArray(record.csnDocuments) ? record.csnDocuments : [];
+          return {
+            content: [{ type: 'text' as const, text: `Resolved ${documents.length} CSN document(s) for data product ${id}. The complete CSN is in structuredContent.` }],
+            structuredContent: toStructuredContent(result)
+          };
+        } catch (error) {
+          return this.errorResult('API Hub data-product CSN failed', error);
+        }
+      }
+    );
+
+    this.mcpServer.registerTool(
       'package',
       {
         title: 'Fetch SAP API Hub Package',
@@ -360,6 +449,29 @@ class SapApiHubMcpServer {
       isError: true
     };
   }
+}
+
+function renderDataProductSummary(detail: unknown): string {
+  const record = asRecord(detail);
+  const lines = [`# ${stringValue(record.displayName) || stringValue(record.technicalName) || 'SAP Data Product'}`, ''];
+  pushLine(lines, 'Technical Name', stringValue(record.technicalName));
+  pushLine(lines, 'ORD ID', stringValue(record.ordId));
+  pushLine(lines, 'Version', stringValue(record.version));
+  pushLine(lines, 'State', stringValue(record.state));
+  pushLine(lines, 'Type', stringValue(record.dataProductType));
+  pushLine(lines, 'Category', stringValue(record.dataProductCategory));
+  pushLine(lines, 'Responsible Organization', stringValue(record.responsibleOrg));
+  pushLine(lines, 'URL', stringValue(record.url));
+  const description = stringValue(record.description) || stringValue(record.shortText);
+  if (description) lines.push('', '## Overview', '', description);
+  if (Array.isArray(record.outputPorts)) {
+    lines.push('', '## Output Ports', '');
+    for (const port of record.outputPorts) {
+      const item = asRecord(port);
+      lines.push(`- ${stringValue(item.TechnicalName) || stringValue(item.technicalName) || 'Unknown'} [${stringValue(item.Type) || stringValue(item.type) || 'API'}]`);
+    }
+  }
+  return lines.join('\n');
 }
 
 function renderFetchSummary(detail: unknown): string {

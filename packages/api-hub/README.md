@@ -253,13 +253,18 @@ Streamable HTTP MCP client config:
 - `resources` - summarize API paths, Event channels, CDS fields, or generic artifact sections.
 - `spec` - return full OpenAPI, AsyncAPI, EDMX, CDS JSON, or raw artifact values on explicit request.
 - `package` - fetch package metadata, docs, and artifacts grouped by type/subtype.
+- `list_data_products` - inventory/search Hub-listed data products with complete pagination and ORD/output-port metadata.
+- `get_data_product` - fetch a data product by technical name or exact ORD ID.
+- `get_data_product_document` - return the full authenticated data-product JSON document.
+- `get_data_product_csn` - resolve output-port APIs and return their API ORD IDs and CSN JSON definitions.
 
 ## Safety Boundaries
 
 - This server is read-only.
 - It does not call business or sandbox API endpoints.
 - It does not retrieve or expose the user's SAP API key.
-- Full specifications are returned only by the explicit `spec` tool.
+- Full specifications are returned only by the explicit `spec`, `get_data_product_document`, and `get_data_product_csn` tools.
+- Public data-product listing and metadata tools do not require login; protected `$value` document and CSN downloads use the authenticated SAP session.
 
 ## Publishing Safety
 

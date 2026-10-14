@@ -1,6 +1,6 @@
-export type ApiHubKind = 'api' | 'event' | 'cdsview' | 'artifact' | 'package';
+export type ApiHubKind = 'api' | 'event' | 'cdsview' | 'artifact' | 'package' | 'dataproduct';
 export type SpecFormat = 'json' | 'yaml' | 'edmx' | 'raw';
-export type AuthMethod = 'auto' | 'password' | 'certificate';
+export type AuthMethod = 'auto' | 'password' | 'certificate' | 'interactive';
 
 export interface ServerConfig {
   pfxPath?: string;
@@ -62,6 +62,18 @@ export interface ApiHubSearchResponse {
   raw?: unknown;
 }
 
+export interface DataProductListInput {
+  q?: string;
+  product?: string;
+  state?: string;
+  top: number;
+  skip: number;
+}
+
+export interface DataProductGetInput {
+  id: string;
+}
+
 export interface FetchInput {
   id: string;
   kind: ApiHubKind;
@@ -71,14 +83,14 @@ export interface FetchInput {
 
 export interface ResourcesInput {
   id: string;
-  kind: Exclude<ApiHubKind, 'package'> | 'artifact';
+  kind: Exclude<ApiHubKind, 'package' | 'dataproduct'> | 'artifact';
   artifactType?: string;
   version?: string;
 }
 
 export interface SpecInput {
   id: string;
-  kind: Exclude<ApiHubKind, 'package'> | 'artifact';
+  kind: Exclude<ApiHubKind, 'package' | 'dataproduct'> | 'artifact';
   format: SpecFormat;
   artifactType?: string;
   version?: string;
